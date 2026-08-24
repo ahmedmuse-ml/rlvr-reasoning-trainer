@@ -3,7 +3,7 @@
 # 🧠 RLVR Reasoning Trainer
 ### Production-Grade Reinforcement Learning with Verifiable Rewards (GRPO) for Large Language Models
 
-[![CI / Test Suite](https://github.com/ahmedmuse-ml/rlvr-reasoning-trainer/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ahmedmuse-ml/rlvr-reasoning-trainer)
+[![CI Test Suite](https://github.com/ahmedmuse-ml/rlvr-reasoning-trainer/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmedmuse-ml/rlvr-reasoning-trainer/actions/workflows/ci.yml)
 [![Pytest](https://img.shields.io/badge/pytest-14%20passed%20(100%25)-success?style=flat-square&logo=pytest)](tests/)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![Architecture](https://img.shields.io/badge/RLVR-GRPO%20%2B%20LoRA-FF6F00?style=flat-square)](src/trainer/grpo_engine.py)
