@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+# Ma jiraan compilers/network tools oo aan loo baahnayn — attack surface yaraynta
+RUN useradd -m -u 1000 sandboxuser
+WORKDIR /sandbox
+USER sandboxuser
+
+# No pip install network access at runtime — dependencies la geliyaa build-time
+COPY --chown=sandboxuser requirements-sandbox.txt .
+RUN pip install --no-cache-dir --user -r requirements-sandbox.txt
+
+# Runtime: --network none --memory 256m --cpus 1 --pids-limit 64
+ENTRYPOINT ["python", "-I"]

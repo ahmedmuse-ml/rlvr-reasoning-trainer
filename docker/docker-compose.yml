@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  trainer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ../outputs:/workspace/outputs
+    env_file: ../.env
+
+  sandbox:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sandbox
+    network_mode: none
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    read_only: true
