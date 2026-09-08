@@ -1,11 +1,16 @@
 from typing import Dict, Any, Optional
-from datasets import load_dataset, Dataset, concatenate_datasets
+
+from datasets import Dataset, concatenate_datasets, load_dataset
 
 
 def _format_math_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
-    """GSM8K formatter oo ku xidhaya chat template iyo XML tags adag."""
+    """Format a GSM8K example into the unified RLVR dataset structure."""
     raw_answer = example["answer"]
-    clean_answer = raw_answer.split("####")[-1].strip() if "####" in raw_answer else raw_answer.strip()
+    clean_answer = (
+        raw_answer.split("####")[-1].strip()
+        if "####" in raw_answer
+        else raw_answer.strip()
+    )
 
     return {
         "prompt": [
@@ -17,7 +22,10 @@ def _format_math_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
                     "the exact final answer inside <answer>...</answer> tags."
                 ),
             },
-            {"role": "user", "content": example["question"]},
+            {
+                "role": "user",
+                "content": example["question"],
+            },
         ],
         "answer": clean_answer,
         "test_list": [],
@@ -26,7 +34,7 @@ def _format_math_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _format_code_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
-    """MBPP formatter oo ku xidhaya Python code prompt."""
+    """Format an MBPP example into the unified RLVR dataset structure."""
     task_description = example.get("prompt") or example.get("text", "")
 
     return {
@@ -39,7 +47,10 @@ def _format_code_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
                     "the executable Python code inside <answer>```python\n...\n```</answer> tags."
                 ),
             },
-            {"role": "user", "content": task_description},
+            {
+                "role": "user",
+                "content": task_description,
+            },
         ],
         "answer": "",
         "test_list": example.get("test_list", []),
@@ -47,40 +58,94 @@ def _format_code_prompt(example: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def load_math_dataset(split: str = "train", max_samples: Optional[int] = None) -> Dataset:
-    """Soo deji GSM8K adoo ilaalinaya columns-ka midaysan."""
+def load_math_dataset(
+    split: str = "train",
+    max_samples: Optional[int] = None,
+) -> Dataset:
+    """Load and format the GSM8K dataset."""
     ds = load_dataset("openai/gsm8k", "main", split=split)
-    ds = ds.map(_format_math_prompt, remove_columns=ds.column_names)
-    if max_samples:
-        ds = ds.select(range(min(len(ds), max_samples)))
+
+    if max_samples is not None:
+        max_samples = min(max_samples, len(ds))
+        ds = ds.select(range(max_samples))
+
+    ds = ds.map(
+        _format_math_prompt,
+        remove_columns=ds.column_names,
+    )
+
     return ds
 
 
-def load_code_dataset(split: str = "train", max_samples: Optional[int] = None) -> Dataset:
-    """Soo deji MBPP sanitized adoo ilaalinaya columns-ka midaysan."""
-    ds = load_dataset("google-research-datasets/mbpp", "sanitized", split=split)
-    ds = ds.map(_format_code_prompt, remove_columns=ds.column_names)
-    if max_samples:
-        ds = ds.select(range(min(len(ds), max_samples)))
+def load_code_dataset(
+    split: str = "train",
+    max_samples: Optional[int] = None,
+) -> Dataset:
+    """Load and format the sanitized MBPP dataset."""
+    ds = load_dataset(
+        "google-research-datasets/mbpp",
+        "sanitized",
+        split=split,
+    )
+
+    if max_samples is not None:
+        max_samples = min(max_samples, len(ds))
+        ds = ds.select(range(max_samples))
+
+    ds = ds.map(
+        _format_code_prompt,
+        remove_columns=ds.column_names,
+    )
+
     return ds
 
 
-def load_multi_domain(math_ratio: float = 0.8, n_total: int = 1000) -> Dataset:
+def load_multi_domain(
+    math_ratio: float = 0.8,
+    n_total: int = 1000,
+    seed: int = 42,
+) -> Dataset:
     """
-    Isku dar Math + Code iyadoo si ammaan ah loo cabbirayo tirada MBPP.
-    GSM8K (weyn) + MBPP (yar) -> Unified Dataset.
+    Build a reproducible mixed Math + Code dataset.
+
+    The requested dataset size and domain ratio are enforced as closely
+    as possible within the available dataset sizes.
     """
-    # 1. Soo deji dhammaan xogta labada dhinac
-    math_ds = load_math_dataset(split="train")
-    code_ds = load_code_dataset(split="train")
+    if not 0.0 <= math_ratio <= 1.0:
+        raise ValueError("math_ratio must be between 0.0 and 1.0.")
 
-    # 2. Xisaabi inta tusaale ee dhinac kasta laga qaadan karo iyadoon xadka la dhaafin
-    target_code = min(len(code_ds), int(n_total * (1.0 - math_ratio)))
-    target_math = min(len(math_ds), n_total - target_code)
+    if n_total <= 0:
+        raise ValueError("n_total must be greater than 0.")
 
-    math_subset = math_ds.shuffle(seed=42).select(range(target_math))
-    code_subset = code_ds.shuffle(seed=42).select(range(target_code))
+    target_math = int(round(n_total * math_ratio))
+    target_code = n_total - target_math
 
-    # 3. Isku dar labada qaybood
-    combined = concatenate_datasets([math_subset, code_subset]).shuffle(seed=42)
+    # Load only the required number of examples.
+    math_ds = load_math_dataset(
+        split="train",
+        max_samples=target_math,
+    )
+
+    code_ds = load_code_dataset(
+        split="train",
+        max_samples=target_code,
+    )
+
+    # If a domain does not contain enough examples, use all available
+    # examples from that domain and fill the remaining capacity from
+    # the other domain.
+    actual_math = len(math_ds)
+    actual_code = len(code_ds)
+    total_available = actual_math + actual_code
+
+    if total_available < n_total:
+        raise ValueError(
+            f"Requested {n_total} samples, but only {total_available} "
+            "samples are available across the selected datasets."
+        )
+
+    combined = concatenate_datasets(
+        [math_ds, code_ds]
+    ).shuffle(seed=seed)
+
     return combined

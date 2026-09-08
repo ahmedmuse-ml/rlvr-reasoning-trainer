@@ -5,9 +5,10 @@ from trl import GRPOTrainer, GRPOConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset
 
-from src.rewards.accuracy_reward import compute_accuracy_reward
-from src.rewards.format_reward import compute_format_reward
-from src.rewards.length_reward import compute_length_reward
+from src.rewards.accuracy_reward import AccuracyReward
+from src.rewards.format_reward import FormatReward
+from src.rewards.length_reward import LengthReward
+from src.rewards.manager import RewardManager
 from src.trainer.callbacks import RewardHackingMonitor
 
 
@@ -106,16 +107,20 @@ def build_grpo_trainer(
 
     lora_config = get_lora_config()
 
+    reward_manager = RewardManager(
+        components=[
+            AccuracyReward(),
+            FormatReward(),
+            LengthReward(),
+        ]
+    )
+
     trainer = GRPOTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         peft_config=lora_config,
-        reward_funcs=[
-            compute_accuracy_reward,
-            compute_format_reward,
-            compute_length_reward,
-        ],
+        reward_funcs=[reward_manager],
         callbacks=[RewardHackingMonitor()],
     )
 

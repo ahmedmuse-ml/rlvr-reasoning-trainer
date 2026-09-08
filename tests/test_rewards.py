@@ -1,6 +1,7 @@
-from src.rewards.accuracy_reward import compute_accuracy_reward
-from src.rewards.format_reward import compute_format_reward
-from src.rewards.length_reward import compute_length_reward
+from src.rewards.accuracy_reward import AccuracyReward, compute_accuracy_reward
+from src.rewards.format_reward import FormatReward, compute_format_reward
+from src.rewards.length_reward import LengthReward, compute_length_reward
+from src.rewards.manager import RewardManager
 
 
 def test_math_accuracy_reward():
@@ -89,3 +90,80 @@ def test_length_reward_penalty():
 
     assert rewards[0] == 0.0
     assert rewards[1] < 0.0
+
+
+def test_accuracy_reward_component():
+    reward = AccuracyReward()
+
+    rewards = reward.compute(
+        ["<think>5+5=10</think><answer>10</answer>"],
+        context={
+            "answer": ["10"],
+            "test_list": [[]],
+            "domain": ["math"],
+        },
+    )
+
+    assert rewards == [1.0]
+
+
+def test_format_reward_component():
+    reward = FormatReward()
+
+    rewards = reward.compute(
+        ["<think>reasoning</think><answer>42</answer>"]
+    )
+
+    assert rewards == [0.5]
+
+
+def test_length_reward_component():
+    reward = LengthReward(
+        threshold_length=5,
+        max_length=10,
+        max_penalty=0.2,
+    )
+
+    rewards = reward.compute(
+        [
+            "one two three",
+            "one two three four five six seven eight nine ten eleven",
+        ]
+    )
+
+    assert rewards[0] == 0.0
+    assert rewards[1] == -0.2
+
+
+def test_reward_manager_combines_components():
+    manager = RewardManager(
+        components=[
+            AccuracyReward(),
+            FormatReward(),
+            LengthReward(),
+        ]
+    )
+
+    rewards = manager(
+        ["<think>5+5=10</think><answer>10</answer>"],
+        answer=["10"],
+        test_list=[[]],
+        domain=["math"],
+    )
+
+    assert len(rewards) == 1
+    assert rewards[0] == 1.5
+
+
+def test_reward_manager_rejects_wrong_reward_length():
+    class BadReward:
+        def compute(self, completions, context=None):
+            return []
+
+    manager = RewardManager(components=[BadReward()])
+
+    try:
+        manager(["completion"])
+        assert False
+    except ValueError as exc:
+        assert "returned 0 rewards for 1 completions" in str(exc)
