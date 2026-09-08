@@ -21,7 +21,15 @@ def get_lora_config(lora_cfg_path: str = "configs/lora_config.yaml") -> LoraConf
         lora_dropout=cfg.get("lora_dropout", 0.05),
         target_modules=cfg.get(
             "target_modules",
-            ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            [
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
         ),
         task_type=TaskType.CAUSAL_LM,
         bias="none",
@@ -36,17 +44,21 @@ def build_grpo_trainer(
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
-    # 1. Hardware Detection (CPU vs GPU)
+    # Hardware detection.
     is_cuda = torch.cuda.is_available()
 
-    # 2. Model Selection (135M for lightweight CPU test, 1.5B for GPU)
-    model_id = "HuggingFaceTB/SmolLM-135M-Instruct" if dry_run else cfg["model_name_or_path"]
+    # Use a lightweight model for dry-run validation.
+    model_id = (
+        "HuggingFaceTB/SmolLM-135M-Instruct"
+        if dry_run
+        else cfg["model_name_or_path"]
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    # 3. Precision Setting
+    # Use BF16 on CUDA and FP32 otherwise.
     torch_dtype = torch.bfloat16 if is_cuda else torch.float32
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -55,18 +67,27 @@ def build_grpo_trainer(
         low_cpu_mem_usage=True,
     )
 
-    # 4. Training Arguments
+    # Keep dry-run intentionally small and deterministic in scope.
     num_generations = 2 if dry_run else cfg.get("num_generations", 8)
-    per_device_train_batch_size = 2 if dry_run else cfg.get("per_device_train_batch_size", 2)
-    gradient_accumulation_steps = 1 if dry_run else cfg.get("gradient_accumulation_steps", 4)
+    max_comp_len = 64 if dry_run else cfg.get("max_completion_length", 512)
+    per_device_train_batch_size = (
+        2 if dry_run else cfg.get("per_device_train_batch_size", 2)
+    )
+    gradient_accumulation_steps = (
+        1 if dry_run else cfg.get("gradient_accumulation_steps", 4)
+    )
     max_steps = 1 if dry_run else -1
-    use_vllm = False if (dry_run or not is_cuda) else cfg.get("use_vllm", True)
-
+    use_vllm = (
+        False
+        if (dry_run or not is_cuda)
+        else cfg.get("use_vllm", True)
+    )
 
     training_args = GRPOConfig(
         output_dir=cfg["output_dir"],
         num_generations=num_generations,
-        max_completion_length=64 if dry_run else cfg.get("max_completion_length", 512),
+        max_completion_length=max_comp_len,
+        loss_type="dr_grpo",
         temperature=cfg.get("temperature", 0.8),
         beta=cfg.get("beta", 0.04),
         learning_rate=float(cfg.get("learning_rate", 1e-6)),
@@ -78,7 +99,6 @@ def build_grpo_trainer(
         save_steps=50,
         report_to="none" if dry_run else cfg.get("report_to", "none"),
         use_vllm=use_vllm,
-        # Explicit CPU/GPU isolation flags:
         use_cpu=not is_cuda,
         bf16=is_cuda,
         fp16=False,
