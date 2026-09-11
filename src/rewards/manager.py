@@ -30,7 +30,13 @@ class RewardManager:
         context = {
             key: value
             for key, value in kwargs.items()
-            if key in {"answer", "test_list", "domain"}
+            if key in {
+                "answer",
+                "test_list",
+                "domain",
+                "database_sql",
+                "reference_sql",
+            }
         }
 
         for component in self.components:

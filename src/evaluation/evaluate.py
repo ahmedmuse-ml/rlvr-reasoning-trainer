@@ -1,7 +1,9 @@
 from typing import Any
+
 from src.evaluation.base import EvaluationInterface
 from src.verifiers.code_verifier import CodeVerifier
 from src.verifiers.math_verifier import MathVerifier
+from src.verifiers.sql_verifier import SQLVerifier
 
 
 class Evaluator(EvaluationInterface):
@@ -25,6 +27,8 @@ class Evaluator(EvaluationInterface):
             domain: task domain
             answer: expected math answer
             test_list: code test harness
+            database_sql: SQL database setup
+            reference_sql: trusted SQL query
 
         Returns:
             Overall and per-domain accuracy metrics.
@@ -34,14 +38,20 @@ class Evaluator(EvaluationInterface):
                 "accuracy": 0.0,
                 "math_accuracy": 0.0,
                 "code_accuracy": 0.0,
+                "sql_accuracy": 0.0,
                 "total": 0,
             }
 
         correct = 0
+
         math_total = 0
         math_correct = 0
+
         code_total = 0
         code_correct = 0
+
+        sql_total = 0
+        sql_correct = 0
 
         for task in tasks:
             completion = task.get("completion", "")
@@ -49,6 +59,7 @@ class Evaluator(EvaluationInterface):
 
             if domain == "code":
                 code_total += 1
+
                 is_correct = CodeVerifier.verify(
                     completion,
                     task.get("test_list", []),
@@ -58,8 +69,24 @@ class Evaluator(EvaluationInterface):
                     code_correct += 1
                     correct += 1
 
+            elif domain == "sql":
+                sql_total += 1
+
+                is_correct = SQLVerifier.verify(
+                    completion,
+                    {
+                        "database_sql": task.get("database_sql", ""),
+                        "reference_sql": task.get("reference_sql", ""),
+                    },
+                )
+
+                if is_correct:
+                    sql_correct += 1
+                    correct += 1
+
             else:
                 math_total += 1
+
                 is_correct = MathVerifier.verify(
                     completion,
                     task.get("answer", ""),
@@ -74,10 +101,19 @@ class Evaluator(EvaluationInterface):
         return {
             "accuracy": correct / total,
             "math_accuracy": (
-                math_correct / math_total if math_total else 0.0
+                math_correct / math_total
+                if math_total
+                else 0.0
             ),
             "code_accuracy": (
-                code_correct / code_total if code_total else 0.0
+                code_correct / code_total
+                if code_total
+                else 0.0
+            ),
+            "sql_accuracy": (
+                sql_correct / sql_total
+                if sql_total
+                else 0.0
             ),
             "total": total,
         }

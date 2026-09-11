@@ -1,4 +1,6 @@
+from data.sql.sales_tasks import SQL_TASKS
 from src.evaluation.evaluate import Evaluator
+
 
 def test_evaluator_math_accuracy():
     evaluator = Evaluator()
@@ -23,6 +25,7 @@ def test_evaluator_math_accuracy():
     assert results["accuracy"] == 0.5
     assert results["math_accuracy"] == 0.5
     assert results["code_accuracy"] == 0.0
+    assert results["sql_accuracy"] == 0.0
     assert results["total"] == 2
 
 
@@ -61,11 +64,59 @@ def test_evaluator_code_accuracy():
     assert results["accuracy"] == 0.5
     assert results["math_accuracy"] == 0.0
     assert results["code_accuracy"] == 0.5
+    assert results["sql_accuracy"] == 0.0
+    assert results["total"] == 2
+
+
+def test_evaluator_sql_accuracy():
+    evaluator = Evaluator()
+
+    task = SQL_TASKS[0]
+
+    tasks = [
+        {
+            "completion": (
+                "<think>Calculate total revenue by product.</think>"
+                "<answer>"
+                "SELECT product, SUM(quantity * unit_price) "
+                "FROM orders GROUP BY product"
+                "</answer>"
+            ),
+            "domain": "sql",
+            "answer": "",
+            "test_list": [],
+            "database_sql": task.database_sql,
+            "reference_sql": task.reference_sql,
+        },
+        {
+            "completion": (
+                "<think>Incorrect query.</think>"
+                "<answer>"
+                "SELECT product, SUM(quantity) "
+                "FROM orders GROUP BY product"
+                "</answer>"
+            ),
+            "domain": "sql",
+            "answer": "",
+            "test_list": [],
+            "database_sql": task.database_sql,
+            "reference_sql": task.reference_sql,
+        },
+    ]
+
+    results = evaluator.evaluate(None, tasks)
+
+    assert results["accuracy"] == 0.5
+    assert results["math_accuracy"] == 0.0
+    assert results["code_accuracy"] == 0.0
+    assert results["sql_accuracy"] == 0.5
     assert results["total"] == 2
 
 
 def test_evaluator_mixed_domains():
     evaluator = Evaluator()
+
+    task = SQL_TASKS[0]
 
     tasks = [
         {
@@ -86,6 +137,20 @@ def test_evaluator_mixed_domains():
             "answer": "",
             "test_list": ["assert multiply(3, 4) == 12"],
         },
+        {
+            "completion": (
+                "<think>correct</think>"
+                "<answer>"
+                "SELECT product, SUM(quantity * unit_price) "
+                "FROM orders GROUP BY product"
+                "</answer>"
+            ),
+            "domain": "sql",
+            "answer": "",
+            "test_list": [],
+            "database_sql": task.database_sql,
+            "reference_sql": task.reference_sql,
+        },
     ]
 
     results = evaluator.evaluate(None, tasks)
@@ -93,7 +158,8 @@ def test_evaluator_mixed_domains():
     assert results["accuracy"] == 1.0
     assert results["math_accuracy"] == 1.0
     assert results["code_accuracy"] == 1.0
-    assert results["total"] == 2
+    assert results["sql_accuracy"] == 1.0
+    assert results["total"] == 3
 
 
 def test_evaluator_empty_tasks():
@@ -105,5 +171,6 @@ def test_evaluator_empty_tasks():
         "accuracy": 0.0,
         "math_accuracy": 0.0,
         "code_accuracy": 0.0,
+        "sql_accuracy": 0.0,
         "total": 0,
     }
