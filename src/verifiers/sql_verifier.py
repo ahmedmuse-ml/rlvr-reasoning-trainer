@@ -17,7 +17,14 @@ class SQLVerifier(VerifierInterface[str, dict]):
         3. The query executes successfully.
         4. Its result matches the trusted reference query result.
 
-    The database is created in memory for every verification call.
+    Supported database sources:
+        - database_sql:
+            SQL statements used to create and populate an isolated
+            in-memory SQLite database.
+        - database_path:
+            Path to an existing populated SQLite database.
+
+    Exactly one database source must be provided.
     """
 
     _READ_ONLY_PATTERN = re.compile(
@@ -127,6 +134,44 @@ class SQLVerifier(VerifierInterface[str, dict]):
         finally:
             connection.set_progress_handler(None, 0)
 
+    @staticmethod
+    def _open_database(
+        database_sql: str | None = None,
+        database_path: str | None = None,
+    ) -> sqlite3.Connection:
+        """
+        Open the SQLite database used for verification.
+
+        If database_sql is provided, create an isolated in-memory
+        database and initialize it using the supplied SQL statements.
+
+        If database_path is provided, open the existing SQLite database
+        directly.
+
+        Exactly one database source must be supplied.
+        """
+        has_database_sql = bool(database_sql)
+        has_database_path = bool(database_path)
+
+        if has_database_sql == has_database_path:
+            raise ValueError(
+                "Exactly one of 'database_sql' or 'database_path' "
+                "must be provided."
+            )
+
+        if has_database_path:
+            return sqlite3.connect(database_path)
+
+        connection = sqlite3.connect(":memory:")
+
+        try:
+            connection.executescript(database_sql)
+        except Exception:
+            connection.close()
+            raise
+
+        return connection
+
     @classmethod
     def verify(
         cls,
@@ -137,16 +182,30 @@ class SQLVerifier(VerifierInterface[str, dict]):
         Verify generated SQL against a trusted reference query.
 
         Reference data must contain:
-            database_sql: SQL statements creating and populating the database.
-            reference_sql: Trusted SQL query defining the expected result.
+            reference_sql:
+                Trusted SQL query defining the expected result.
+
+        And exactly one of:
+            database_sql:
+                SQL statements creating and populating an isolated
+                in-memory database.
+
+            database_path:
+                Path to an existing populated SQLite database.
+
+        Returns:
+            True if the generated SQL executes successfully and produces
+            the same normalized result as the trusted reference query.
+            False otherwise.
         """
         if not isinstance(reference, dict):
             return False
 
         database_sql = reference.get("database_sql")
+        database_path = reference.get("database_path")
         reference_sql = reference.get("reference_sql")
 
-        if not database_sql or not reference_sql:
+        if not reference_sql:
             return False
 
         generated_sql = cls._extract_sql(prediction)
@@ -158,11 +217,12 @@ class SQLVerifier(VerifierInterface[str, dict]):
             return False
 
         try:
-            connection = sqlite3.connect(":memory:")
+            connection = cls._open_database(
+                database_sql=database_sql,
+                database_path=database_path,
+            )
 
             try:
-                connection.executescript(database_sql)
-
                 expected_rows = cls._execute_query(
                     connection,
                     reference_sql,
@@ -181,5 +241,11 @@ class SQLVerifier(VerifierInterface[str, dict]):
             finally:
                 connection.close()
 
-        except (sqlite3.Error, TimeoutError, ValueError):
+        except (
+            sqlite3.Error,
+            OSError,
+            TimeoutError,
+            ValueError,
+            TypeError,
+        ):
             return False
