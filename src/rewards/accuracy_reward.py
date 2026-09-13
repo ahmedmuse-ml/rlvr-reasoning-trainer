@@ -1,3 +1,5 @@
+# Step 25B — Add database_path Support to AccuracyReward
+
 from typing import Optional
 
 from src.rewards.base import RewardInterface
@@ -39,26 +41,37 @@ class AccuracyReward(RewardInterface[str, dict]):
         test_list = context.get("test_list")
         domains = context.get("domain")
         database_sql = context.get("database_sql")
+        database_path = context.get("database_path")
         reference_sql = context.get("reference_sql")
 
         n = len(completions)
 
         answers = answers if answers is not None else [""] * n
+
         test_list = (
             test_list
             if test_list is not None
             else [[] for _ in range(n)]
         )
+
         domains = (
             domains
             if domains is not None
             else ["math"] * n
         )
+
         database_sql = (
             database_sql
             if database_sql is not None
             else [""] * n
         )
+
+        database_path = (
+            database_path
+            if database_path is not None
+            else [None] * n
+        )
+
         reference_sql = (
             reference_sql
             if reference_sql is not None
@@ -67,12 +80,21 @@ class AccuracyReward(RewardInterface[str, dict]):
 
         rewards = []
 
-        for completion, answer, tests, domain, db_sql, ref_sql in zip(
+        for (
+            completion,
+            answer,
+            tests,
+            domain,
+            db_sql,
+            db_path,
+            ref_sql,
+        ) in zip(
             completions,
             answers,
             test_list,
             domains,
             database_sql,
+            database_path,
             reference_sql,
         ):
             text = self._extract_text(completion)
@@ -82,14 +104,17 @@ class AccuracyReward(RewardInterface[str, dict]):
                     text,
                     {
                         "database_sql": db_sql,
+                        "database_path": db_path,
                         "reference_sql": ref_sql,
                     },
                 )
+
             elif domain == "code" or len(tests) > 0:
                 is_correct = CodeVerifier.verify(
                     text,
                     tests,
                 )
+
             else:
                 is_correct = MathVerifier.verify(
                     text,
@@ -107,6 +132,7 @@ def compute_accuracy_reward(
     test_list=None,
     domain=None,
     database_sql=None,
+    database_path=None,
     reference_sql=None,
     **kwargs,
 ) -> list[float]:
@@ -120,6 +146,7 @@ def compute_accuracy_reward(
             "test_list": test_list,
             "domain": domain,
             "database_sql": database_sql,
+            "database_path": database_path,
             "reference_sql": reference_sql,
         },
     )

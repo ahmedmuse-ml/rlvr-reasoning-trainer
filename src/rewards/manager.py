@@ -1,3 +1,5 @@
+# Step 25A — Pass database_path Through the Reward Manager
+
 from typing import Any
 
 from src.rewards.base import RewardInterface
@@ -35,6 +37,7 @@ class RewardManager:
                 "test_list",
                 "domain",
                 "database_sql",
+                "database_path",
                 "reference_sql",
             }
         }
