@@ -1,3 +1,5 @@
+# Step 26B-2 — Add database_path Support to SQL Evaluation
+
 from typing import Any
 
 from src.evaluation.base import EvaluationInterface
@@ -28,11 +30,13 @@ class Evaluator(EvaluationInterface):
             answer: expected math answer
             test_list: code test harness
             database_sql: SQL database setup
+            database_path: path to a materialized SQL database
             reference_sql: trusted SQL query
 
         Returns:
             Overall and per-domain accuracy metrics.
         """
+
         if not tasks:
             return {
                 "accuracy": 0.0,
@@ -75,7 +79,8 @@ class Evaluator(EvaluationInterface):
                 is_correct = SQLVerifier.verify(
                     completion,
                     {
-                        "database_sql": task.get("database_sql", ""),
+                        "database_sql": task.get("database_sql"),
+                        "database_path": task.get("database_path"),
                         "reference_sql": task.get("reference_sql", ""),
                     },
                 )
